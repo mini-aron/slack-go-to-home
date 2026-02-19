@@ -1,4 +1,5 @@
 import * as http from "http";
+import * as querystring from "querystring";
 import { App } from "@slack/bolt";
 import { getLeaveTime, setLeaveTime, getAllScheduled } from "./store";
 
@@ -113,21 +114,67 @@ async function sendReminders(client: SlackClient): Promise<void> {
   }
 }
 
+function handleSlashCommand(
+  command: string,
+  text: string,
+  userId: string
+): { response_type: "ephemeral"; text: string } | null {
+  const ephemeral = (text: string): { response_type: "ephemeral"; text: string } => ({ response_type: "ephemeral", text });
+
+  if (command === "/퇴근" || command === "/퇴근시간설정") {
+    const time = parseTime(text) || parseTime(text.trim());
+    if (!time) {
+      return ephemeral("올바른 시간 형식이 아니에요. 예: `/퇴근 18:00`");
+    }
+    setLeaveTime(userId, time);
+    return ephemeral(`퇴근시간을 *${time}*으로 설정했어요. 그때 DM으로 알려드릴게요.`);
+  }
+
+  // /퇴근시간: 설정된 시간 + 남은 분 한 번에
+  if (command === "/퇴근시간" || command === "/퇴근몇분") {
+    const record = getLeaveTime(userId);
+    if (!record) return ephemeral("아직 퇴근시간이 설정되지 않았어요. `/퇴근 18:00` 으로 설정해 주세요.");
+    const now = nowKST();
+    const minutesLeft = minutesUntilLeave(now, record.time);
+    const msg =
+      minutesLeft === 0
+        ? `퇴근 *${record.time}* — 이미 퇴근 시간이에요. 수고 많으셨어요.`
+        : `퇴근 *${record.time}* — *${minutesLeft}분* 남았어요.`;
+    return ephemeral(msg);
+  }
+
+  return null;
+}
+
 const PORT = Number(process.env.PORT) || 3000;
 const server = http.createServer((req, res) => {
   if (req.method === "POST") {
     let body = "";
     req.on("data", (chunk) => { body += chunk; });
     req.on("end", () => {
-      try {
-        const data = JSON.parse(body) as { type?: string; challenge?: string };
-        if (data.type === "url_verification" && typeof data.challenge === "string") {
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ challenge: data.challenge }));
-          return;
+      const contentType = req.headers["content-type"] ?? "";
+      if (contentType.includes("application/json")) {
+        try {
+          const data = JSON.parse(body) as { type?: string; challenge?: string };
+          if (data.type === "url_verification" && typeof data.challenge === "string") {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ challenge: data.challenge }));
+            return;
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
+      }
+      if (contentType.includes("application/x-www-form-urlencoded")) {
+        const payload = querystring.parse(body) as { command?: string; text?: string; user_id?: string };
+        if (payload.command && payload.user_id) {
+          const slashResponse = handleSlashCommand(payload.command, (payload.text ?? "").trim(), payload.user_id);
+          if (slashResponse) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(slashResponse));
+            return;
+          }
+        }
       }
       res.writeHead(200, { "Content-Type": "text/plain" });
       res.end("ok");
