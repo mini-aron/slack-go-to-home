@@ -137,15 +137,15 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("ok");
 });
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Health check server listening on 0.0.0.0:${PORT}`);
-});
 
-app.start().then(async () => {
-  console.log("퇴근 봇이 실행 중이에요.");
-  const client = app.client;
-  setInterval(() => sendReminders(client), 60 * 1000);
-}).catch((err) => {
-  console.error("Slack app start failed:", err);
-  process.exit(1);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Health check server listening on 0.0.0.0:${PORT} (env PORT=${process.env.PORT ?? "unset"})`);
+  app.start().then(async () => {
+    console.log("퇴근 봇이 실행 중이에요.");
+    const client = app.client;
+    setInterval(() => sendReminders(client), 60 * 1000);
+  }).catch((err) => {
+    console.error("Slack app start failed:", err);
+    process.exit(1);
+  });
 });
