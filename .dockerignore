@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.git
+*.log
+leave-times.json
+README.md
+DEPLOY.md
