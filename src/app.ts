@@ -24,6 +24,15 @@ function formatTimeHM(hour: number, minute: number): string {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+/** 퇴근시간(HH:mm)까지 남은 분. 이미 지났으면 0, 아직이면 양수. */
+function minutesUntilLeave(now: { hour: number; minute: number }, leaveTime: string): number {
+  const [h, m] = leaveTime.split(":").map(Number);
+  const nowM = now.hour * 60 + now.minute;
+  const leaveM = h * 60 + m;
+  const diff = leaveM - nowM;
+  return diff <= 0 ? 0 : diff;
+}
+
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET,
@@ -55,6 +64,23 @@ app.message(async ({ message, client, say }) => {
       return;
     }
     await say({ text: `현재 퇴근시간은 *${record.time}*이에요.` });
+    return;
+  }
+
+  // 퇴근시간 몇 분 남았는지
+  if (/퇴근(시간)?\s*몇\s*분\s*남았|몇\s*분\s*남았어|퇴근\s*얼마나\s*남았|퇴근시간\s*남은\s*시간|퇴근\s*몇\s*분/.test(text)) {
+    const record = getLeaveTime(userId);
+    if (!record) {
+      await say({ text: "아직 퇴근시간이 설정되지 않았어요. `퇴근 18:00` 처럼 입력해 주세요." });
+      return;
+    }
+    const now = nowKST();
+    const minutesLeft = minutesUntilLeave(now, record.time);
+    const msg =
+      minutesLeft === 0
+        ? `이미 퇴근 시간이에요. 퇴근시간 *${record.time}* 수고 많으셨어요.`
+        : `퇴근시간 *${minutesLeft}분* 남았어요. (퇴근 ${record.time})`;
+    await say({ text: msg });
   }
 });
 
