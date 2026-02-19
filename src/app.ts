@@ -114,7 +114,26 @@ async function sendReminders(client: SlackClient): Promise<void> {
 }
 
 const PORT = Number(process.env.PORT) || 3000;
-const server = http.createServer((_req, res) => {
+const server = http.createServer((req, res) => {
+  if (req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      try {
+        const data = JSON.parse(body) as { type?: string; challenge?: string };
+        if (data.type === "url_verification" && typeof data.challenge === "string") {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ challenge: data.challenge }));
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+    });
+    return;
+  }
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("ok");
 });
